@@ -128,7 +128,11 @@ def _journal(payload):
 def _notify_telegram(text):
     token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
     chat_id = (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
-    if not token or not chat_id:
+    if not token:
+        print("  [telegram] skipped: TELEGRAM_BOT_TOKEN not set", file=sys.stderr)
+        return
+    if not chat_id:
+        print("  [telegram] skipped: TELEGRAM_CHAT_ID not set", file=sys.stderr)
         return
     import urllib.request
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -139,9 +143,14 @@ def _notify_telegram(text):
     }).encode("utf-8")
     req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
     try:
-        urllib.request.urlopen(req, timeout=10)
-    except Exception:
-        pass
+        resp = urllib.request.urlopen(req, timeout=10)
+        data = json.loads(resp.read().decode("utf-8"))
+        if data.get("ok"):
+            print("  [telegram] sent OK", file=sys.stderr)
+        else:
+            print(f"  [telegram] API error: {data.get('description', 'unknown')}", file=sys.stderr)
+    except Exception as exc:
+        print(f"  [telegram] send failed: {exc}", file=sys.stderr)
 
 
 def main():

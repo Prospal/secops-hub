@@ -13,6 +13,8 @@ _CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.IGNORECASE)
 _DEMO_LOGS_RE = re.compile(r"\b(generate|create|make)\b.*\b(demo\s+)?(logs?|events?)\b", re.IGNORECASE)
 _DEMO_ALERTS_RE = re.compile(r"\b(generate|create|make)\b.*\b(demo\s+)?(alert|incident|case)s?\b", re.IGNORECASE)
 _SCAN_LOGS_RE = re.compile(r"\b(scan|analy[sz]e|hunt)\b.*\b(logs?|events?|jsonl|evtx)\b|\.jsonl\b", re.IGNORECASE)
+_SCAN_ASSETS_RE = re.compile(r"\b(scan|check|match)\b.*\b(asset|inventory|cpe)\b|assets?\s*(against|for|with)\b", re.IGNORECASE)
+_CONVERT_EVTX_RE = re.compile(r"\b(convert|transform)\b.*\b(evtx|event\s*log)\b", re.IGNORECASE)
 _PIPELINE_RE = re.compile(r"\b(pipeline|process|triage)\b.*\b(alerts?|queue|pending|all|inbox)\b", re.IGNORECASE)
 _RULE_RE = re.compile(
     r"\b(rule|sigma|detection|alert|powershell|mimikatz|lsass|sekurlsa|downloadstring|invoke-webrequest|encodedcommand|c2|beacon)\b",
@@ -80,6 +82,10 @@ def _pick_capability(text: str) -> str:
         return "alert_simulator"
     if _PIPELINE_RE.search(text):
         return "pipeline"
+    if _SCAN_ASSETS_RE.search(text):
+        return "scan_assets"
+    if _CONVERT_EVTX_RE.search(text):
+        return "evtx_to_jsonl"
     if _CVE_RE.search(text):
         return "cve_lookup"
     if _RULE_RE.search(text):
@@ -162,6 +168,8 @@ _CAP_TITLES = {
     "log_scan":         "Log Scan",
     "alert_simulator":  "Alert Simulator",
     "pipeline":         "AI SOC Pipeline",
+    "scan_assets":      "Asset Vulnerability Scan",
+    "evtx_to_jsonl":    "EVTX Converter",
 }
 
 _SEV_LABELS = {
@@ -292,6 +300,16 @@ def main() -> int:
         elif cap == "pipeline":
             argv = ["--once", "--json"]
             result = _run_script("pipeline", argv)
+        elif cap == "scan_assets":
+            cve = _CVE_RE.search(text).group(0) if _CVE_RE.search(text) else text
+            argv = [cve]
+            result = _run_script("scan_assets", argv)
+        elif cap == "evtx_to_jsonl":
+            argv_temp = [t.strip('"\'') for t in text.split() if t.lower().endswith(".evtx")]
+            if not argv_temp:
+                argv_temp = [text]
+            argv = argv_temp[:1]
+            result = _run_script("evtx_to_jsonl", argv)
         else:
             argv = ["--mock"] if (ns.mock or offline) else []
             if not ns.mock:
