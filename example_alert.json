@@ -1,0 +1,18 @@
+{
+  "id": "alert-20260530-120000-0999",
+  "timestamp": "2026-05-30T12:00:00Z",
+  "type": "credential-dump",
+  "title": "Possible LSASS Credential Dumping via Mimikatz",
+  "severity": "Critical",
+  "source": "EDR",
+  "raw_text": "Process mimikatz.exe on FINANCE-PC01 accessed lsass.exe with GrantedAccess 0x1410. Parent process was cmd.exe executed by user CORP\\jdoe via RDP session from 198.51.100.99.",
+  "iocs": {
+    "ip": ["198.51.100.99", "185.220.101.50"],
+    "domain": ["c2-badactors.example.com"],
+    "url": ["http://c2-badactors.example.com/drop/mimikatz.exe"],
+    "sha256": ["a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"],
+    "md5": ["abc123def456abc123def456abc123de"],
+    "sha1": []
+  },
+  "keywords": ["mimikatz", "lsass", "credential dump", "sekurlsa", "c2", "rdp"]
+}

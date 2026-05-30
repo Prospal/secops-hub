@@ -1,0 +1,5 @@
+.env
+out/
+in/alerts/
+in/processed/
+scripts/kev_cache.json
