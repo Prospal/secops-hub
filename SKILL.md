@@ -1,6 +1,6 @@
 ---
 name: secops-hub
-description: "SecOps analyst hub: triage IOCs, look up CVEs, and generate Sigma detection rules. Invoke when the user pastes a security indicator, alert, or CVE ID, or asks for a detection rule."
+description: "SecOps analyst hub: triage IOCs, look up CVEs, generate Sigma detection rules, automate Tier-1 SOC alert pipeline, and produce cross-role handoff packages for analysts, IR teams, and management. Invoke when the user pastes a security indicator, alert, or CVE ID, asks for a detection rule, or wants to share a case with their team."
 ---
 
 # SecOps Hub
@@ -17,32 +17,92 @@ Run one command for any analyst input:
 ```
 python .trae/skills/secops-hub/scripts/dispatch.py "CVE-2024-3094"
 python .trae/skills/secops-hub/scripts/dispatch.py "mimikatz dumping lsass"
-python .trae/skills/secops-hub/scripts/dispatch.py "write a detection rule for powershell downloading a file from a suspicious domain"
+python .trae/skills/secops-hub/scripts/dispatch.py "write a detection rule for powershell downloading a file"
 python .trae/skills/secops-hub/scripts/dispatch.py "generate demo alerts"
 python .trae/skills/secops-hub/scripts/dispatch.py "process all pending alerts"
+python .trae/skills/secops-hub/scripts/dispatch.py "handoff latest case for management"
+python .trae/skills/secops-hub/scripts/dispatch.py "generate dashboard"
 ```
 
 `dispatch.py` writes every run to a local journal at `.trae/skills/secops-hub/out/findings.jsonl`.
 
-## Offline / production mode
+## Cross-Role Collaboration (TRAE as Unified Entry Point)
 
-Many production networks block outbound internet. For that environment:
+SecOps Hub is designed for multi-role teams. The same TRAE conversation can serve
+an analyst, escalate to the IR team, and brief management — without switching tools.
 
-- Set `SECOPS_HUB_OFFLINE=1` to force offline mode (CVE lookup uses mock/fallback; triage uses mock/fallback unless you provide internal enrichment keys).
-- For a production-grade CVE pipeline, mirror vulnerability data into your network segment and query that mirror instead of calling public APIs directly.
+### Role-Based Handoff Workflow
 
-## Environment (.env)
+```
+Analyst (TRAE)
+    │
+    ├─▶ IOC Triage / CVE Lookup / Detection Rules     ← analyst daily work
+    │
+    ├─▶ AI SOC Pipeline (alert → enrich → classify → escalate)
+    │         │
+    │         ├─▶ out/cases/case-*.md                  ← auto-generated evidence bundle
+    │         │
+    │         ├─▶ handoff --role analyst               ← analyst view: IOCs + hunt queries
+    │         ├─▶ handoff --role ir-team               ← IR view: containment + forensics
+    │         └─▶ handoff --role management            ← exec view: impact + decisions
+    │
+    └─▶ generate dashboard                             ← real-time ROI + metrics for leadership
+```
 
-`dispatch.py` auto-loads `.trae/skills/secops-hub/.env` (if present) and exports variables for child scripts.
-Copy `.env.example` to `.env`, then fill values:
+### Example Multi-Role Session
 
-- `NVD_API_KEY` (optional): reduces NVD throttling for CVE lookup
-- `VIRUSTOTAL_API_KEY` (optional): enables VirusTotal enrichment in `triage.py`
-- `ABUSEIPDB_API_KEY` (optional): enables AbuseIPDB enrichment in `triage.py`
-- `TELEGRAM_BOT_TOKEN` (optional): Telegram bot token for push notifications on escalations
-- `TELEGRAM_CHAT_ID` (optional): Telegram chat ID for push notifications
-- `SECOPS_HUB_WEBHOOK_URL` (optional): POST each run to a webhook endpoint
-- `SECOPS_HUB_OFFLINE` (optional): force offline mode
+```
+# Analyst generates and processes alerts
+dispatch.py "generate demo alerts"
+dispatch.py "process all pending alerts"
+
+# Analyst prepares handoffs for each audience (all from TRAE)
+dispatch.py "handoff latest case for ir-team"
+dispatch.py "handoff latest case for management"
+dispatch.py "handoff latest case for analyst"
+
+# Leadership views metrics
+dispatch.py "generate dashboard"
+```
+
+Handoff documents are saved to `out/handoffs/handoff-<role>-<case-id>.md`.
+
+## ROI Metrics
+
+SecOps Hub quantifies the time and cost saved by automating analyst work.
+
+| Capability | Manual Time | Automated | Time Saved/Run |
+|---|---|---|---|
+| IOC Triage | 20 min | 30 sec | **~19.5 min** |
+| CVE Lookup | 10 min | 15 sec | **~9.75 min** |
+| Detection Rule | 90 min | 45 sec | **~89.25 min** |
+| Log Scan | 30 min | 20 sec | **~29.67 min** |
+| Alert Pipeline | 20 min/alert | 45 sec | **~19.25 min** |
+| Asset Scan | 15 min | 20 sec | **~14.67 min** |
+
+> At $65/hr analyst rate: **10 alert triage runs ≈ $210 saved**. A detection rule alone saves **~1.5 hrs**.
+
+Generate an always-current ROI report:
+
+```
+python .trae/skills/secops-hub/scripts/report.py
+python .trae/skills/secops-hub/scripts/dispatch.py "generate dashboard"
+```
+
+## All Capabilities
+
+| Analyst input looks like… | Capability | Script |
+|---|---|---|
+| An IOC — IP, domain, file hash, or URL | **Triage** | `scripts/triage.py` |
+| A CVE ID (e.g. `CVE-2024-3094`) | **CVE lookup** | `scripts/cve_lookup.py` |
+| A plain-language attack description, or "write a detection rule for…" | **Detection rule** | `scripts/detection_rule.py` |
+| "generate logs/events for …" | **Synthetic logs** | `scripts/synthetic_logs.py` |
+| "generate demo logs" | **Demo logs to file** | `scripts/demo_logs.py` |
+| "scan logs <path>" | **Log scan** | `scripts/log_scan.py` |
+| "generate demo alerts" | **Alert simulator** | `scripts/alert_simulator.py` |
+| "process all pending alerts" | **Pipeline** | `scripts/pipeline.py` |
+| "handoff [case] for [analyst\|ir-team\|management]" | **Cross-role handoff** | `scripts/handoff.py` |
+| "generate dashboard" / "show metrics" / "roi" | **SOC Dashboard** | `scripts/dashboard.py` |
 
 ## AI SOC Pipeline (Tier-1 Automation)
 
@@ -56,6 +116,8 @@ in/alerts/alert-*.json  →  enrich.py  →  classify.py  →  escalate.py  → 
                                                               │
                                                               ▼
                                                   out/cases/case-*.md
+                                                              │
+                                                  handoff.py (all 3 roles)
 ```
 
 ### How to use
@@ -77,30 +139,7 @@ classification → escalation → bundle chain for each, and moves processed fil
 | **Classify** | `scripts/classify.py` | False-positive filter — confidence score 0-100 with reasoning |
 | **Escalate** | `scripts/escalate.py` | Needs-human gate: escalate / review / suppress |
 | **Bundle** | `scripts/bundle.py` | Evidence bundle → `out/cases/case-<id>.md` (IOCs, timeline, affected assets, MITRE, actions) |
-
-### Bundle output (excerpt)
-
-Each `out/cases/case-*.md` contains:
-
-- Case ID, severity, confidence, verdict, decision
-- Alert summary and raw text
-- Enriched IOCs (with GreyNoise classification + passive DNS)
-- Affected assets (matched from `assets.csv`)
-- Classification reasoning (why the confidence score)
-- Recommended actions (tiered by severity + decision)
-
-## The core capabilities
-
-| Analyst input looks like… | Capability | Script |
-|---|---|---|
-| An IOC — IP, domain, file hash, or URL | **Triage** | `scripts/triage.py` |
-| A CVE ID (e.g. `CVE-2024-3094`) | **CVE lookup** | `scripts/cve_lookup.py` |
-| A plain-language attack description, or "write a detection rule for…" | **Detection rule** | `scripts/detection_rule.py` |
-| "generate logs/events for …" | **Synthetic logs** | `scripts/synthetic_logs.py` |
-| "generate demo logs" | **Demo logs to file** | `scripts/demo_logs.py` |
-| "scan logs <path>" | **Log scan** | `scripts/log_scan.py` |
-| "generate demo alerts" | **Alert simulator** | `scripts/alert_simulator.py` |
-| "process all pending alerts" | **Pipeline** | `scripts/pipeline.py` |
+| **Handoff** | `scripts/handoff.py` | Role-specific package → `out/handoffs/handoff-<role>-<case>.md` |
 
 ## How to run a capability
 
@@ -114,6 +153,8 @@ python .trae/skills/secops-hub/scripts/detection_rule.py "powershell downloading
 python .trae/skills/secops-hub/scripts/synthetic_logs.py "generate logs for mimikatz dumping lsass"
 python .trae/skills/secops-hub/scripts/demo_logs.py
 python .trae/skills/secops-hub/scripts/log_scan.py ".trae/skills/secops-hub/out/telemetry/demo_events.jsonl"
+python .trae/skills/secops-hub/scripts/handoff.py --role management
+python .trae/skills/secops-hub/scripts/dashboard.py
 ```
 
 (Paths are relative to the workspace root. If the working directory is the skill
@@ -151,6 +192,26 @@ CVE with `mitre: "N/A"`, suggest a likely ATT&CK technique and say it's inferred
 Never replace the script's factual fields (CVSS severity, NVD description) with
 guesses — enrich around them.
 
+## Offline / production mode
+
+Many production networks block outbound internet. For that environment:
+
+- Set `SECOPS_HUB_OFFLINE=1` to force offline mode (CVE lookup uses mock/fallback; triage uses mock/fallback unless you provide internal enrichment keys).
+- For a production-grade CVE pipeline, mirror vulnerability data into your network segment and query that mirror instead of calling public APIs directly.
+
+## Environment (.env)
+
+`dispatch.py` auto-loads `.trae/skills/secops-hub/.env` (if present) and exports variables for child scripts.
+Copy `.env.example` to `.env`, then fill values:
+
+- `NVD_API_KEY` (optional): reduces NVD throttling for CVE lookup
+- `VIRUSTOTAL_API_KEY` (optional): enables VirusTotal enrichment in `triage.py`
+- `ABUSEIPDB_API_KEY` (optional): enables AbuseIPDB enrichment in `triage.py`
+- `TELEGRAM_BOT_TOKEN` (optional): Telegram bot token for push notifications on escalations
+- `TELEGRAM_CHAT_ID` (optional): Telegram chat ID for push notifications
+- `SECOPS_HUB_WEBHOOK_URL` (optional): POST each run to a webhook endpoint
+- `SECOPS_HUB_OFFLINE` (optional): force offline mode
+
 ## Reliability / fallback
 
 Each script falls back to realistic canned data if its API fails, times out, or is
@@ -168,18 +229,26 @@ python .trae/skills/secops-hub/scripts/cve_lookup.py --mock
 python .trae/skills/secops-hub/scripts/detection_rule.py --mock
 python .trae/skills/secops-hub/scripts/triage.py --mock
 python .trae/skills/secops-hub/scripts/synthetic_logs.py --mock
+python .trae/skills/secops-hub/scripts/handoff.py --mock
+python .trae/skills/secops-hub/scripts/dashboard.py --mock
 python .trae/skills/secops-hub/scripts/dispatch.py --mock "CVE-2024-3094"
 ```
 
 ## Webhook push (optional)
 
-If you want a seamless demo “SIEM ingest”, set `SECOPS_HUB_WEBHOOK_URL` to an HTTPS endpoint.
+If you want a seamless demo "SIEM ingest", set `SECOPS_HUB_WEBHOOK_URL` to an HTTPS endpoint.
 `dispatch.py` will POST each journal entry as JSON to that URL.
 
 ## Report export
 
-Generate a shareable report from the journal:
+Generate a shareable markdown report (includes ROI breakdown):
 
 ```
 python .trae/skills/secops-hub/scripts/report.py --out .trae/skills/secops-hub/out/report.md
+```
+
+Generate an HTML dashboard with live metrics:
+
+```
+python .trae/skills/secops-hub/scripts/dashboard.py --out .trae/skills/secops-hub/out/dashboard.html
 ```

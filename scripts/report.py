@@ -4,6 +4,19 @@ import json
 import pathlib
 import sys
 
+ROI_BASELINES = {
+    "triage":          {"manual_min": 20,  "auto_sec": 30,  "label": "IOC Triage"},
+    "cve_lookup":      {"manual_min": 10,  "auto_sec": 15,  "label": "CVE Lookup"},
+    "detection_rule":  {"manual_min": 90,  "auto_sec": 45,  "label": "Detection Rule"},
+    "log_scan":        {"manual_min": 30,  "auto_sec": 20,  "label": "Log Scan"},
+    "pipeline":        {"manual_min": 20,  "auto_sec": 45,  "label": "Alert Pipeline"},
+    "scan_assets":     {"manual_min": 15,  "auto_sec": 20,  "label": "Asset Scan"},
+    "demo_logs":       {"manual_min":  5,  "auto_sec":  5,  "label": "Demo Logs"},
+    "alert_simulator": {"manual_min":  5,  "auto_sec":  5,  "label": "Alert Simulator"},
+    "evtx_to_jsonl":   {"manual_min": 10,  "auto_sec": 10,  "label": "EVTX Converter"},
+}
+ANALYST_HOURLY_RATE_USD = 65
+
 
 def _skill_dir() -> pathlib.Path:
     return pathlib.Path(__file__).resolve().parents[1]
@@ -33,6 +46,27 @@ def _md_escape(s: str) -> str:
     return (s or "").replace("\r", "").strip()
 
 
+def _compute_roi(entries: list[dict]) -> dict:
+    total_manual = 0.0
+    total_auto_sec = 0.0
+    by_cap: dict[str, int] = {}
+    for e in entries:
+        cap = e.get("capability", "triage")
+        by_cap[cap] = by_cap.get(cap, 0) + 1
+        b = ROI_BASELINES.get(cap, {"manual_min": 10, "auto_sec": 30})
+        total_manual += b["manual_min"]
+        total_auto_sec += b["auto_sec"]
+    saved_min = max(0, total_manual - total_auto_sec / 60)
+    saved_hrs = saved_min / 60
+    return {
+        "total_manual_min": total_manual,
+        "saved_min": saved_min,
+        "saved_hrs": saved_hrs,
+        "dollar_saved": saved_hrs * ANALYST_HOURLY_RATE_USD,
+        "by_cap": by_cap,
+    }
+
+
 def _render(entries: list[dict]) -> str:
     now = (
         dt.datetime.now(dt.timezone.utc)
@@ -45,6 +79,27 @@ def _render(entries: list[dict]) -> str:
     lines.append("")
     lines.append(f"Generated: {now}")
     lines.append(f"Entries: {len(entries)}")
+    lines.append("")
+
+    # ROI summary
+    roi = _compute_roi(entries)
+    lines.append("## ROI Summary")
+    lines.append("")
+    lines.append(f"| Metric | Value |")
+    lines.append(f"|---|---|")
+    lines.append(f"| Total queries automated | {len(entries)} |")
+    lines.append(f"| Estimated manual time | {roi['total_manual_min']:.0f} min |")
+    lines.append(f"| Time saved | **{roi['saved_min']:.0f} min ({roi['saved_hrs']:.1f} hrs)** |")
+    lines.append(f"| Cost avoided (@ ${ANALYST_HOURLY_RATE_USD}/hr) | **${roi['dollar_saved']:.0f}** |")
+    lines.append("")
+    lines.append("### Breakdown by Capability")
+    lines.append("")
+    lines.append("| Capability | Runs | Manual/run | Saved |")
+    lines.append("|---|---|---|---|")
+    for cap, count in sorted(roi["by_cap"].items(), key=lambda x: -x[1]):
+        b = ROI_BASELINES.get(cap, {"manual_min": 10, "auto_sec": 30, "label": cap})
+        saved = (b["manual_min"] * count) - (b["auto_sec"] * count / 60)
+        lines.append(f"| {b['label']} | {count} | {b['manual_min']} min | {saved:.1f} min |")
     lines.append("")
 
     for i, e in enumerate(reversed(entries[-50:]), start=1):

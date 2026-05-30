@@ -16,6 +16,14 @@ _SCAN_LOGS_RE = re.compile(r"\b(scan|analy[sz]e|hunt)\b.*\b(logs?|events?|jsonl|
 _SCAN_ASSETS_RE = re.compile(r"\b(scan|check|match)\b.*\b(asset|inventory|cpe)\b|assets?\s*(against|for|with)\b", re.IGNORECASE)
 _CONVERT_EVTX_RE = re.compile(r"\b(convert|transform)\b.*\b(evtx|event\s*log)\b", re.IGNORECASE)
 _PIPELINE_RE = re.compile(r"\b(pipeline|process|triage)\b.*\b(alerts?|queue|pending|all|inbox)\b", re.IGNORECASE)
+_HANDOFF_RE = re.compile(
+    r"\b(handoff|hand.?off|brief|briefing|package|escalate\s+to|forward\s+to|send\s+to)\b",
+    re.IGNORECASE,
+)
+_DASHBOARD_RE = re.compile(
+    r"\b(dashboard|metrics|roi|report|stats|statistics|open\s+dashboard|show\s+metrics|generate\s+dashboard)\b",
+    re.IGNORECASE,
+)
 _RULE_RE = re.compile(
     r"\b(rule|sigma|detection|alert|powershell|mimikatz|lsass|sekurlsa|downloadstring|invoke-webrequest|encodedcommand|c2|beacon)\b",
     re.IGNORECASE,
@@ -74,6 +82,10 @@ def _should_offline(cli_offline: bool) -> bool:
 
 
 def _pick_capability(text: str) -> str:
+    if _HANDOFF_RE.search(text):
+        return "handoff"
+    if _DASHBOARD_RE.search(text):
+        return "dashboard"
     if _SCAN_LOGS_RE.search(text):
         return "log_scan"
     if _DEMO_LOGS_RE.search(text):
@@ -170,6 +182,8 @@ _CAP_TITLES = {
     "pipeline":         "AI SOC Pipeline",
     "scan_assets":      "Asset Vulnerability Scan",
     "evtx_to_jsonl":    "EVTX Converter",
+    "handoff":          "Cross-Role Handoff",
+    "dashboard":        "SOC Dashboard",
 }
 
 _SEV_LABELS = {
@@ -310,6 +324,24 @@ def main() -> int:
                 argv_temp = [text]
             argv = argv_temp[:1]
             result = _run_script("evtx_to_jsonl", argv)
+        elif cap == "handoff":
+            # detect role from input text
+            role = "analyst"
+            tl = text.lower()
+            if "management" in tl or "executive" in tl or "exec" in tl or "ciso" in tl or "ceo" in tl:
+                role = "management"
+            elif "ir" in tl or "incident response" in tl or "ir-team" in tl or "ir team" in tl:
+                role = "ir-team"
+            # detect case id hint
+            case_hint = ""
+            m = re.search(r"case-[\w\-]+", text, re.IGNORECASE)
+            if m:
+                case_hint = m.group(0)
+            argv = ["--mock"] if ns.mock else ["--role", role, case_hint]
+            result = _run_script("handoff", argv)
+        elif cap == "dashboard":
+            argv = ["--mock"] if ns.mock else []
+            result = _run_script("dashboard", argv)
         else:
             argv = ["--mock"] if (ns.mock or offline) else []
             if not ns.mock:
